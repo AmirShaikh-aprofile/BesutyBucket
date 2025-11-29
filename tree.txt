@@ -1,0 +1,46 @@
+/var/www/beautybucket/
+├── backend
+│   ├── __pycache__
+│   │   └── app.cpython-39.pyc
+│   ├── app.py
+│   ├── backend
+│   │   └── static
+│   ├── beautybucket.db
+│   ├── beautybucket.db.bak
+│   ├── products.db
+│   └── static
+│       └── images -> /var/www/beautybucket/static/images
+├── beautybucket.db
+├── frontend
+│   ├── admin.html
+│   └── index.html
+├── static
+│   └── images
+│       ├── Amir.jpg
+│       ├── Pic.jpg
+│       ├── b6d00ffd-5404-4955-8eaf-6187a9999f67.jpg
+│       └── f1cb692c-6e58-4d2a-90be-a77058035d15.jpg
+├── uploads
+└── venv
+    ├── bin
+    │   ├── Activate.ps1
+    │   ├── __pycache__
+    │   ├── activate
+    │   ├── activate.csh
+    │   ├── activate.fish
+    │   ├── flask
+    │   ├── gunicorn
+    │   ├── jp.py
+    │   ├── pip
+    │   ├── pip3
+    │   ├── pip3.9
+    │   ├── python -> python3
+    │   ├── python3 -> /usr/bin/python3
+    │   └── python3.9 -> python3
+    ├── include
+    ├── lib
+    │   └── python3.9
+    ├── lib64 -> lib
+    └── pyvenv.cfg
+
+17 directories, 26 files
