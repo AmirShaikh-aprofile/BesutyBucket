@@ -1,0 +1,14 @@
+[Unit]
+Description=BeautyBucket Backend
+After=network.target
+
+[Service]
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/var/www/beautybucket
+Environment="PATH=/var/www/beautybucket/venv/bin"
+ExecStart=/var/www/beautybucket/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 backend.app:app
+
+[Install]
+WantedBy=multi-user.target
+
