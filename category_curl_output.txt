@@ -1,0 +1,1 @@
+[{"id":1,"name":"Bleach"},{"id":2,"name":"Facial Kits"},{"id":3,"name":"Hair Care"},{"id":4,"name":"Skin Care"},{"id":5,"name":"Wax"},{"id":6,"name":"Herbal"}]
