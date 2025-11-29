@@ -4,7 +4,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-DB_PATH = os.path.join(os.getcwd(), 'backend', 'beautybucket.db')
+DB_PATH = '/var/www/beautybucket/backend/beautybucket.db'
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'static', 'images')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 

@@ -3,8 +3,6 @@
 │   ├── __pycache__
 │   │   └── app.cpython-39.pyc
 │   ├── app.py
-│   ├── backend
-│   │   └── static
 │   ├── beautybucket.db
 │   ├── beautybucket.db.backup
 │   ├── products.db
@@ -43,4 +41,4 @@
     ├── lib64 -> lib
     └── pyvenv.cfg
 
-17 directories, 26 files
+15 directories, 26 files
