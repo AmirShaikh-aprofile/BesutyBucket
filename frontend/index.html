@@ -1,25 +1,27 @@
-<!-- frontend/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BeautyBucket</title>
-  <style>
-    body{font-family:Arial;background:#fdf6f9;margin:0}
-    header{background:#ff4da6;padding:18px;text-align:center;color:#fff}
-    .container{display:flex;padding:12px;gap:12px}
-    .sidebar{width:220px}
-    .products{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;flex:1}
-    .product-card{background:#fff;padding:12px;border-radius:8px;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,.06)}
-    .product-card img{width:140px;height:140px;object-fit:contain}
-    .discount-box{display:inline-block;background:#e8f7e8;color:#148214;padding:4px 6px;border-radius:6px;font-weight:600;margin-left:6px;font-size:13px}
-    .price-row { margin-top:8px }
-    .whatsapp { display:inline-block;margin-top:10px;padding:8px 10px;background:#25D366;color:white;border-radius:6px;text-decoration:none }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>BeautyBucket</title>
+<style>
+  body{font-family:Arial;background:#fdf6f9;margin:0}
+  header{background:#ff4da6;padding:18px;text-align:center;color:#fff}
+  .container{display:flex;padding:12px;gap:12px}
+  .sidebar{width:220px}
+  .products{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;flex:1}
+  .product-card{background:#fff;padding:12px;border-radius:8px;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+  .product-card img{width:130px;height:130px;object-fit:contain}
+  .price{font-weight:bold;margin:4px 0}
+  .discount{background:#d0f0c0;color:#2b7a0b;font-size:12px;padding:2px 4px;border-radius:4px;margin-left:4px}
+  button.whatsapp{background:#25D366;color:#fff;padding:6px 12px;border:none;border-radius:6px;margin-top:6px;cursor:pointer}
+</style>
 </head>
 <body>
-<header><h1>BeautyBucket</h1><small>Quality Cosmetics. Quick Delivery.</small></header>
+<header>
+  <h1>BeautyBucket</h1>
+  <small>Quality Cosmetics. Quick Delivery.</small>
+</header>
 
 <div class="container">
   <div class="sidebar">
@@ -33,78 +35,71 @@
 </div>
 
 <script>
-const API = '/api';
-let allProducts = [];
+const API='/api';
+let allProducts=[];
 
 async function loadProducts(){
-  try {
-    const res = await fetch(`${API}/products`);
-    allProducts = await res.json();
+  try{
+    const res=await fetch(`${API}/products`);
+    allProducts=await res.json();
     renderProducts(allProducts);
-  } catch(e){ console.error(e) }
+  }catch(e){ console.error(e); }
 }
 
 function renderProducts(list){
-  const el = document.getElementById('productList');
-  el.innerHTML = '';
+  const el=document.getElementById('productList');
+  el.innerHTML='';
   list.forEach(p=>{
-    const div = document.createElement('div'); div.className='product-card';
-    const imgpath = p.image_url && p.image_url.length ? `/static/images/${p.image_url}` : '/static/images/Pic.jpg';
-    const mrp = Number(p.mrp||0);
-    const sp1 = Number(p.selling_price_1 ?? (mrp - (p.discount_1||0)));
-    const sp5 = Number(p.selling_price_5 ?? (mrp - (p.discount_5||0)));
-    const d1 = mrp>0 ? Math.round(((mrp - sp1)/mrp)*100*100)/100 : 0;
-    const d5 = mrp>0 ? Math.round(((mrp - sp5)/mrp)*100*100)/100 : 0;
-    div.innerHTML = `
-      <img src="${imgpath}" alt="${p.name}" />
-      <h4>${p.name || ''}</h4>
-      <p style="min-height:36px">${p.details || ''}</p>
-      <div class="price-row"><strike>₹${mrp}</strike> <b>₹${sp1}</b> <span class="discount-box">${d1}%</span></div>
-      <div class="price-row"><small>Buy 5pcs each ₹${sp5}</small> <span class="discount-box">${d5}%</span></div>
-      <a class="whatsapp" href="${waLink('+919999999999', p)}" target="_blank" rel="noopener">Buy via WhatsApp</a>
+    const div=document.createElement('div');
+    div.className='product-card';
+    div.innerHTML=`
+      <img src="/images/${p.image_url||'Pic.jpg'}" alt="${p.name}" />
+      <h4>${p.name}</h4>
+      <p>${p.details}</p>
+      <p>${p.category}</p>
+      <p>
+        <strike>₹${p.mrp}</strike><br>
+        <span class="price">₹${p.selling_price_1pc}<span class="discount">${p.discount_1pc_percent}% off</span></span><br>
+        <span class="price">₹${p.selling_price_5pc}<span class="discount">${p.discount_5pc_percent}% off</span></span>
+      </p>
+      <button class="whatsapp" onclick="buyWhatsapp('${p.name}')">Buy via WhatsApp</button>
     `;
     el.appendChild(div);
   });
 }
 
-function waLink(number, product){
-  // NOTE: replace number with your phone (no + if using wa.me direct), keep +countrycode optional
-  // Compose message; URL encode
-  const to = number.replace(/\+/g,'');
-  const text = `Hello%20I%20want%20to%20buy%20%3A%20${encodeURIComponent(product.name || '')}%0AProduct%20ID%3A%20${product.id}%0AQuantity%3A%20%5BEnter%20qty%5D%0APlease%20send%20to%20%3A%20%5BName%2C%20Address%2C%20Pincode%5D`;
-  // Use wa.me with country+number
-  return `https://wa.me/${to}?text=${text}`;
+function buyWhatsapp(productName){
+  const msg=encodeURIComponent(`Hi, I want to buy ${productName} from BeautyBucket.`);
+  window.open(`https://wa.me/?text=${msg}`,'_blank');
 }
 
+// Load categories
 async function loadCategories(){
-  try {
-    const res = await fetch(`${API}/categories`);
-    const cats = await res.json();
-    const list = document.getElementById('categoryList');
-    list.innerHTML = '<li style="background:#ff4da6;color:#fff;padding:8px;margin-bottom:8px;border-radius:6px;cursor:pointer" onclick="renderProducts(allProducts)">All Products</li>';
+  try{
+    const res=await fetch(`${API}/categories`);
+    const cats=await res.json();
+    const list=document.getElementById('categoryList');
+    list.innerHTML='<li style="background:#ff4da6;color:#fff;padding:8px;margin-bottom:8px;border-radius:6px;cursor:pointer" onclick="renderProducts(allProducts)">All Products</li>';
     cats.forEach(c=>{
-      const li = document.createElement('li');
-      li.style = "background:#ff4da6;color:#fff;padding:8px;margin-bottom:8px;border-radius:6px;cursor:pointer";
-      li.textContent = c.name;
-      li.onclick = async ()=> {
-        const r = await fetch(`${API}/category/${encodeURIComponent(c.name)}`);
-        const products = await r.json();
+      const li=document.createElement('li');
+      li.style="background:#ff4da6;color:#fff;padding:8px;margin-bottom:8px;border-radius:6px;cursor:pointer";
+      li.textContent=c.name;
+      li.onclick=async ()=>{
+        const r=await fetch(`${API}/category/${encodeURIComponent(c.name)}`);
+        const products=await r.json();
         renderProducts(products);
       };
       list.appendChild(li);
     });
-  } catch(e){ console.error(e) }
+  }catch(e){ console.error(e); }
 }
 
-document.getElementById('searchInput').addEventListener('input', ()=>{
-  const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  const filtered = allProducts.filter(p => (p.name || '').toLowerCase().includes(q));
+document.getElementById('searchInput').addEventListener('input',()=>{
+  const q=document.getElementById('searchInput').value.trim().toLowerCase();
+  const filtered=allProducts.filter(p=>(p.name||'').toLowerCase().includes(q));
   renderProducts(filtered);
 });
 
 loadCategories();
-loadProducts();
-</script>
-</body>
-</html>
+loa
 

@@ -1,4 +1,3 @@
-<!-- frontend/admin.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,16 +6,13 @@
 <title>BeautyBucket Admin</title>
 <style>
   body { font-family: Arial, sans-serif; background:#f8f5f5; padding:20px; }
-  form { background:#fff; padding:20px; max-width:760px; margin:auto; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08) }
+  form { background:#fff; padding:20px; max-width:700px; margin:auto; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.08) }
   input, select, textarea { width:100%; padding:10px; margin:8px 0; border-radius:6px; border:1px solid #ccc }
-  .row { display:flex; gap:12px; }
-  .row > div { flex:1; }
   button { background:#d6336c; color:#fff; padding:12px; border:none; border-radius:6px; width:100% }
   .product-card { background:#fff; padding:12px; margin:12px 0; border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,.06) }
   img.thumb { width:80px; height:80px; object-fit:cover; border-radius:6px; }
-  .small-btn { padding:6px 10px; font-size:13px; border-radius:6px; }
-  label.small { font-size:13px; color:#444; }
-  .inline-field { display:flex; gap:8px; align-items:center; }
+  .flex { display:flex; gap:12px }
+  .flex > div { flex:1 }
 </style>
 </head>
 <body>
@@ -27,48 +23,45 @@
   <input name="name" required />
 
   <label>Category</label>
-  <div class="inline-field">
-    <select name="category" required>
-      <option value="">-- Select Category --</option>
-    </select>
-    <input id="newCategoryInput" placeholder="Add category" style="width:180px" />
-    <button id="addCategoryBtn" type="button" class="small-btn">Add</button>
-  </div>
+  <select name="category" required>
+    <option value="">-- Select Category --</option>
+  </select>
+  <button type="button" onclick="addCategory()">+ Add Category</button>
 
   <label>Details</label>
   <textarea name="details" rows="2"></textarea>
 
-  <div class="row">
+  <div class="flex">
     <div>
       <label>MRP</label>
       <input type="number" step="0.01" name="mrp" required />
     </div>
     <div>
       <label>Our purchase price</label>
-      <input type="number" step="0.01" name="our_purchase_price" />
+      <input type="number" step="0.01" name="purchase" />
     </div>
     <div>
       <label>Discount we got (%)</label>
-      <input type="number" step="0.01" name="discount_we_got_percent" readonly />
+      <input type="number" step="0.01" name="discount_mrp_percent" readonly />
     </div>
   </div>
 
-  <div class="row">
+  <div class="flex">
     <div>
-      <label>Selling price (1pc) - enter amount</label>
-      <input type="number" step="0.01" name="selling_price_1" />
+      <label>Selling price (1 pc)</label>
+      <input type="number" step="0.01" name="selling_price_1pc" />
     </div>
     <div>
-      <label>Discount % (1pc)</label>
-      <input type="number" step="0.01" name="discount_percent_1" readonly />
+      <label>Selling price (5 pc)</label>
+      <input type="number" step="0.01" name="selling_price_5pc" />
     </div>
     <div>
-      <label>Selling price (5pc) - enter per-unit amount</label>
-      <input type="number" step="0.01" name="selling_price_5" />
+      <label>Discount 1 pc (%)</label>
+      <input type="number" step="0.01" name="discount_1pc_percent" readonly />
     </div>
     <div>
-      <label>Discount % (5pc)</label>
-      <input type="number" step="0.01" name="discount_percent_5" readonly />
+      <label>Discount 5 pc (%)</label>
+      <input type="number" step="0.01" name="discount_5pc_percent" readonly />
     </div>
   </div>
 
@@ -82,110 +75,108 @@
 </form>
 
 <h3 style="text-align:center;margin-top:24px">Existing Products</h3>
-<div id="productsList" style="max-width:980px;margin:12px auto"></div>
+<div id="productsList" style="max-width:900px;margin:12px auto"></div>
 
 <script>
 const BASE = '/api';
 
-// Helper functions
-function toNum(v){ return v==null || v=='' ? 0 : Number(v); }
-function pct(a, b){ return b>0 ? ((a/b)*100) : 0; } // a/b*100
-
 // Load categories
-async function loadCategories(){
+async function loadCategories() {
   try {
     const res = await fetch(`${BASE}/categories`);
     const cats = await res.json();
     const sel = document.querySelector("select[name=category]");
     sel.innerHTML = '<option value="">-- Select Category --</option>';
-    cats.forEach(c=>{
-      const o = document.createElement('option'); o.value = c.name; o.textContent = c.name;
+    cats.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.name;
+      o.textContent = c.name;
       sel.appendChild(o);
     });
-  } catch(e){ console.error('loadCategories', e); }
+  } catch (e) { console.error('loadCategories', e); }
 }
 loadCategories();
 
-// Add category button
-document.getElementById('addCategoryBtn').addEventListener('click', async ()=>{
-  const val = document.getElementById('newCategoryInput').value.trim();
-  if(!val) return alert('Enter category name');
-  try {
-    const fd = new FormData(); fd.append('name', val);
-    const res = await fetch(`${BASE}/add-category`, { method: 'POST', body: fd });
-    const j = await res.json();
-    if(j.message){ document.getElementById('newCategoryInput').value=''; loadCategories(); }
-    else alert('Error adding category: '+JSON.stringify(j));
-  } catch(err){ alert('Error: '+err); console.error(err); }
-});
-
-// Auto calculations (client-side)
-const form = document.getElementById('productForm');
-const field = (n)=>form.querySelector(`[name="${n}"]`);
-
-function recomputeDiscountWeGot(){
-  const mrp = toNum(field('mrp').value);
-  const purchase = toNum(field('our_purchase_price').value);
-  const percent = mrp>0 ? ((mrp - purchase)/mrp)*100 : 0;
-  field('discount_we_got_percent').value = Math.round(percent*100)/100;
+function addCategory() {
+  const name = prompt("Enter new category name:");
+  if(!name) return;
+  fetch(`${BASE}/add-category`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  }).then(res=>res.json())
+    .then(json=>{
+      if(json.message) loadCategories();
+      else alert(json.error || 'Error adding category');
+    });
 }
 
-function recomputeSellingDiscounts(){
-  const mrp = toNum(field('mrp').value);
-  const sp1 = toNum(field('selling_price_1').value);
-  const sp5 = toNum(field('selling_price_5').value);
-  const d1 = mrp>0 ? ((mrp - sp1)/mrp)*100 : 0;
-  const d5 = mrp>0 ? ((mrp - sp5)/mrp)*100 : 0;
-  field('discount_percent_1').value = Math.round(d1*100)/100;
-  field('discount_percent_5').value = Math.round(d5*100)/100;
+// Auto-calc discount we got %
+document.querySelector("input[name=mrp]").addEventListener('input', calcDiscount);
+document.querySelector("input[name=purchase]").addEventListener('input', calcDiscount);
+
+function calcDiscount(){
+  const mrp = parseFloat(document.querySelector("input[name=mrp]").value) || 0;
+  const purchase = parseFloat(document.querySelector("input[name=purchase]").value) || 0;
+  const disc = mrp ? ((mrp - purchase)/mrp*100).toFixed(2) : 0;
+  document.querySelector("input[name=discount_mrp_percent]").value = disc;
 }
 
-// Wire up events
-['mrp','our_purchase_price'].forEach(n=> field(n).addEventListener('input', ()=>{
-  recomputeDiscountWeGot();
-  recomputeSellingDiscounts();
-}));
-['selling_price_1','selling_price_5'].forEach(n=> field(n).addEventListener('input', recomputeSellingDiscounts));
+// Auto-calc discount % from selling prices
+function calcSellingDiscounts(){
+  const mrp = parseFloat(document.querySelector("input[name=mrp]").value) || 0;
+  const sp1 = parseFloat(document.querySelector("input[name=selling_price_1pc]").value) || 0;
+  const sp5 = parseFloat(document.querySelector("input[name=selling_price_5pc]").value) || 0;
+  const disc1 = mrp ? ((mrp - sp1)/mrp*100).toFixed(2) : 0;
+  const disc5 = mrp ? ((mrp - sp5)/mrp*100).toFixed(2) : 0;
+  document.querySelector("input[name=discount_1pc_percent]").value = disc1;
+  document.querySelector("input[name=discount_5pc_percent]").value = disc5;
+}
 
-// Submit (Add / Update)
-form.addEventListener('submit', async function(e){
+document.querySelector("input[name=selling_price_1pc]").addEventListener('input', calcSellingDiscounts);
+document.querySelector("input[name=selling_price_5pc]").addEventListener('input', calcSellingDiscounts);
+
+// Form submission
+document.getElementById('productForm').addEventListener('submit', async function(e){
   e.preventDefault();
   const fd = new FormData(this);
-  // keep compatibility: backend expects purchase (old) or our_purchase_price
-  if(fd.get('our_purchase_price') !== null) fd.set('purchase', fd.get('our_purchase_price'));
   const action = this.getAttribute('data-action') || 'add';
-  const url = action === 'add' ? `${BASE}/add-product` : `${BASE}/update-product/${this.getAttribute('data-id')}`;
+  const url = action==='add'?`${BASE}/add-product`:`${BASE}/update-product/${this.getAttribute('data-id')}`;
   try {
-    const res = await fetch(url, { method: 'POST', body: fd });
-    const j = await res.json();
-    if(j.message){ alert(j.message); form.reset(); form.removeAttribute('data-action'); form.removeAttribute('data-id'); loadProducts(); loadCategories(); }
-    else alert('Error: ' + JSON.stringify(j));
-  } catch(err){ alert('Request error: '+err); console.error(err); }
+    const res = await fetch(url,{method:'POST',body:fd});
+    const json = await res.json();
+    if(json.message){
+      alert(json.message);
+      this.reset();
+      this.removeAttribute('data-action');
+      this.removeAttribute('data-id');
+      this.querySelector('button[type=submit]').textContent='Add Product';
+      loadProducts();
+      loadCategories();
+    } else alert('Error: '+(json.error||JSON.stringify(json)));
+  } catch(err){ alert('Request failed: '+err); console.error(err); }
 });
 
-// Load products list (short card)
+// Load products
 async function loadProducts(){
   try {
     const res = await fetch(`${BASE}/products`);
     const products = await res.json();
-    const wrap = document.getElementById('productsList'); wrap.innerHTML = '';
+    const wrap = document.getElementById('productsList');
+    wrap.innerHTML = '';
     products.forEach(p=>{
-      const div = document.createElement('div'); div.className='product-card';
-      const img = p.image_url && p.image_url.length ? p.image_url : 'Pic.jpg';
-      div.innerHTML = `
+      const div = document.createElement('div');
+      div.className='product-card';
+      div.innerHTML=`
         <div style="display:flex;gap:12px;align-items:center">
-          <img class="thumb" src="/static/images/${img}" />
+          <img class="thumb" src="/images/${p.image_url||'Pic.jpg'}" />
           <div style="flex:1">
-            <b>${p.name||'(no name)'}</b> <small>(${p.category||'--'})</small><br>
-            ${p.details||''}<br>
-            MRP: ₹${p.mrp} | Stock: ${p.stock||0}<br>
-            <span>Sell 1pc: ₹${p.selling_price_1 ?? ( (p.mrp - (p.discount_1||0)).toFixed ? (p.mrp - (p.discount_1||0)).toFixed(2) : p.mrp - (p.discount_1||0) ) }</span>
-            &nbsp; | &nbsp; <span>Sell 5pc: ₹${p.selling_price_5 ?? ( (p.mrp - (p.discount_5||0)).toFixed ? (p.mrp - (p.discount_5||0)).toFixed(2) : p.mrp - (p.discount_5||0) ) }</span><br>
-            <small>Disc1: ${p.discount_percent_1 ?? 0}% | Disc5: ${p.discount_percent_5 ?? 0}%</small>
+            <b>${p.name}</b> <small>(${p.category})</small><br>
+            MRP: ₹${p.mrp} | Stock: ${p.stock}<br>
+            Our Purchase Price: ₹${p.purchase_price} | Discount got: ${p.discount_mrp_percent}%<br>
+            Selling 1pc: ₹${p.selling_price_1pc} (${p.discount_1pc_percent}%) | Selling 5pc: ₹${p.selling_price_5pc} (${p.discount_5pc_percent}%)
           </div>
-          <div style="min-width:120px">
-            <button onclick="editProduct(${p.id})" class="small-btn">Edit</button>
-          </div>
+          <div><button style="padding:4px 8px" onclick="editProduct(${p.id})">Edit</button></div>
         </div>`;
       wrap.appendChild(div);
     });
@@ -195,23 +186,24 @@ loadProducts();
 
 async function editProduct(id){
   try {
-    const res = await fetch(`${BASE}/product/${id}`);
+    const res = await fetch(`/api/product/${id}`);
     const p = await res.json();
-    form.name.value = p.name;
-    form.category.value = p.category;
-    form.details.value = p.details;
-    form.mrp.value = p.mrp;
-    form.our_purchase_price.value = p.purchase_price || p.our_purchase_price || 0;
-    form.discount_we_got_percent.value = p.discount_we_got_percent || '';
-    form.selling_price_1.value = p.selling_price_1 || (p.mrp - (p.discount_1||0));
-    form.discount_percent_1.value = p.discount_percent_1 || '';
-    form.selling_price_5.value = p.selling_price_5 || (p.mrp - (p.discount_5||0));
-    form.discount_percent_5.value = p.discount_percent_5 || '';
-    form.stock.value = p.stock;
-    form.setAttribute('data-action', 'update');
-    form.setAttribute('data-id', id);
-    form.querySelector('button[type=submit]').textContent = 'Update Product';
-  } catch(err){ console.error('editProduct', err); alert('Error loading product'); }
+    const f = document.getElementById('productForm');
+    f.name.value=p.name;
+    f.category.value=p.category;
+    f.details.value=p.details;
+    f.mrp.value=p.mrp;
+    f.purchase.value=p.purchase_price;
+    f.discount_mrp_percent.value=p.discount_mrp_percent;
+    f.selling_price_1pc.value=p.selling_price_1pc;
+    f.selling_price_5pc.value=p.selling_price_5pc;
+    f.discount_1pc_percent.value=p.discount_1pc_percent;
+    f.discount_5pc_percent.value=p.discount_5pc_percent;
+    f.stock.value=p.stock;
+    f.querySelector('button[type=submit]').textContent='Update Product';
+    f.setAttribute('data-action','update');
+    f.setAttribute('data-id',id);
+  } catch(e){ console.error('editProduct', e); }
 }
 </script>
 </body>

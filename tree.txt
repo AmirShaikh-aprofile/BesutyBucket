@@ -6,16 +6,16 @@
 │   ├── backend
 │   │   └── static
 │   ├── beautybucket.db
-│   ├── beautybucket.db.bak
+│   ├── beautybucket.db.backup
 │   ├── products.db
 │   └── static
 │       └── images -> /var/www/beautybucket/static/images
-├── beautybucket.db
 ├── frontend
 │   ├── admin.html
 │   └── index.html
 ├── static
 │   └── images
+│       ├── 0d9ffaad-71a9-4bfe-ad9d-af18823b600a.jpg
 │       ├── Amir.jpg
 │       ├── Pic.jpg
 │       ├── b6d00ffd-5404-4955-8eaf-6187a9999f67.jpg
