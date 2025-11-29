@@ -1,28 +1,16 @@
-# /var/www/beautybucket/backend/app.py
-from flask import Flask, request, jsonify, send_file, send_from_directory, abort
-import sqlite3
-import os
-import openpyxl
-import logging
-from werkzeug.utils import secure_filename
-from flask_cors import CORS
+# backend/app.py
+from flask import Flask, request, jsonify, send_file
+import sqlite3, os, openpyxl, logging
 
-# --- Config ---
 logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
-CORS(app)  # allow same-origin and external dev calls
 
 DB = "/var/www/beautybucket/backend/beautybucket.db"
 UPLOAD_FOLDER = "/var/www/beautybucket/backend/static/images"
-ALLOWED_EXT = {"png", "jpg", "jpeg", "gif"}
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-def get_conn():
-    return sqlite3.connect(DB)
-
-# --- DB init ---
 def init_db():
-    conn = get_conn()
+    conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS categories(
@@ -30,6 +18,7 @@ def init_db():
             name TEXT UNIQUE
         )
     """)
+    # products table may already exist; ensure columns exist via migrations instead
     c.execute("""
         CREATE TABLE IF NOT EXISTS products(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +30,14 @@ def init_db():
             discount_1 REAL,
             discount_5 REAL,
             stock INTEGER,
-            image_url TEXT
+            image_url TEXT,
+            -- new fields default to NULL for compatibility
+            our_purchase_price REAL,
+            discount_we_got_percent REAL,
+            selling_price_1 REAL,
+            selling_price_5 REAL,
+            discount_percent_1 REAL,
+            discount_percent_5 REAL
         )
     """)
     conn.commit()
@@ -49,179 +45,174 @@ def init_db():
 
 init_db()
 
-# --- Helpers ---
 def row_to_product(r):
     return {
         "id": r[0], "name": r[1], "category": r[2], "details": r[3],
         "mrp": r[4], "purchase_price": r[5], "discount_1": r[6],
-        "discount_5": r[7], "stock": r[8], "image_url": r[9]
+        "discount_5": r[7], "stock": r[8], "image_url": r[9],
+        "our_purchase_price": r[10] if len(r) > 10 else None,
+        "discount_we_got_percent": r[11] if len(r) > 11 else None,
+        "selling_price_1": r[12] if len(r) > 12 else None,
+        "selling_price_5": r[13] if len(r) > 13 else None,
+        "discount_percent_1": r[14] if len(r) > 14 else None,
+        "discount_percent_5": r[15] if len(r) > 15 else None
     }
 
-def allowed_file(filename):
-    if "." not in filename:
-        return False
-    ext = filename.rsplit(".", 1)[1].lower()
-    return ext in ALLOWED_EXT
-
-# --- Routes ---
-@app.get("/")
-def root():
-    return "BeautyBucket Backend Running"
-
-@app.get("/api/health")
-def api_health():
-    logging.info("GET /api/health")
-    return jsonify({"status": "ok"})
-
-@app.get("/api/categories")
-def get_categories():
-    logging.info("GET /api/categories")
-    conn = get_conn()
+@app.get("/api/products")
+def get_products():
+    conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT id, name FROM categories ORDER BY name")
+    c.execute("SELECT * FROM products")
     rows = c.fetchall()
     conn.close()
-    categories = [{"id": r[0], "name": r[1]} for r in rows]
-    return jsonify(categories)
+    products = [row_to_product(r) for r in rows]
+    return jsonify(products)
+
+@app.get("/api/product/<int:id>")
+def get_single_product(id):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("SELECT * FROM products WHERE id = ?", (id,))
+    r = c.fetchone()
+    conn.close()
+    if not r:
+        return {"error": "Product not found"}, 404
+    return row_to_product(r)
+
+@app.route("/api/add-product", methods=["POST"])
+def add_product_admin():
+    try:
+        name = request.form.get("name")
+        category = request.form.get("category")
+        details = request.form.get("details")
+        mrp = float(request.form.get("mrp", 0))
+        # accept both old 'purchase' and new 'our_purchase_price'
+        our_purchase = request.form.get("our_purchase_price") or request.form.get("purchase") or 0
+        our_purchase = float(our_purchase)
+        discount1 = float(request.form.get("discount1", 0))
+        discount5 = float(request.form.get("discount5", 0))
+        stock = int(request.form.get("stock", 0))
+
+        selling_price_1 = request.form.get("selling_price_1")
+        selling_price_5 = request.form.get("selling_price_5")
+        selling_price_1 = float(selling_price_1) if selling_price_1 not in (None, '') else (mrp - discount1)
+        selling_price_5 = float(selling_price_5) if selling_price_5 not in (None, '') else (mrp - discount5)
+
+        # compute percents server side
+        discount_we_got_percent = ((mrp - our_purchase)/mrp)*100 if mrp>0 else 0
+        discount_percent_1 = ((mrp - selling_price_1)/mrp)*100 if mrp>0 else 0
+        discount_percent_5 = ((mrp - selling_price_5)/mrp)*100 if mrp>0 else 0
+
+        image_file = request.files.get("image")
+        image_name = ""
+        if image_file:
+            image_name = image_file.filename
+            image_file.save(os.path.join(UPLOAD_FOLDER, image_name))
+
+        conn = sqlite3.connect(DB)
+        c = conn.cursor()
+        c.execute("""
+            INSERT INTO products
+            (name, category, details, mrp, purchase_price, discount_1, discount_5, stock, image_url,
+             our_purchase_price, discount_we_got_percent, selling_price_1, selling_price_5,
+             discount_percent_1, discount_percent_5)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, category, details, mrp, our_purchase, discount1, discount5, stock, image_name,
+              our_purchase, discount_we_got_percent, selling_price_1, selling_price_5,
+              discount_percent_1, discount_percent_5))
+        conn.commit()
+        conn.close()
+        return {"message": "Product added successfully!"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+@app.route("/api/update-product/<int:id>", methods=["POST"])
+def update_product(id):
+    try:
+        name = request.form.get("name")
+        category = request.form.get("category")
+        details = request.form.get("details")
+        mrp = float(request.form.get("mrp", 0))
+        our_purchase = request.form.get("our_purchase_price") or request.form.get("purchase") or 0
+        our_purchase = float(our_purchase)
+        discount1 = float(request.form.get("discount1", 0))
+        discount5 = float(request.form.get("discount5", 0))
+        stock = int(request.form.get("stock", 0))
+
+        selling_price_1 = request.form.get("selling_price_1")
+        selling_price_5 = request.form.get("selling_price_5")
+        selling_price_1 = float(selling_price_1) if selling_price_1 not in (None, '') else (mrp - discount1)
+        selling_price_5 = float(selling_price_5) if selling_price_5 not in (None, '') else (mrp - discount5)
+
+        discount_we_got_percent = ((mrp - our_purchase)/mrp)*100 if mrp>0 else 0
+        discount_percent_1 = ((mrp - selling_price_1)/mrp)*100 if mrp>0 else 0
+        discount_percent_5 = ((mrp - selling_price_5)/mrp)*100 if mrp>0 else 0
+
+        conn = sqlite3.connect(DB)
+        c = conn.cursor()
+
+        image_file = request.files.get("image")
+        if image_file:
+            image_name = image_file.filename
+            image_file.save(os.path.join(UPLOAD_FOLDER, image_name))
+            c.execute("""
+                UPDATE products
+                SET name=?, category=?, details=?, mrp=?, purchase_price=?, discount_1=?, discount_5=?, stock=?, image_url=?,
+                    our_purchase_price=?, discount_we_got_percent=?, selling_price_1=?, selling_price_5=?, discount_percent_1=?, discount_percent_5=?
+                WHERE id=?
+            """, (name, category, details, mrp, our_purchase, discount1, discount5, stock, image_name,
+                  our_purchase, discount_we_got_percent, selling_price_1, selling_price_5,
+                  discount_percent_1, discount_percent_5, id))
+        else:
+            c.execute("""
+                UPDATE products
+                SET name=?, category=?, details=?, mrp=?, purchase_price=?, discount_1=?, discount_5=?, stock=?,
+                    our_purchase_price=?, discount_we_got_percent=?, selling_price_1=?, selling_price_5=?, discount_percent_1=?, discount_percent_5=?
+                WHERE id=?
+            """, (name, category, details, mrp, our_purchase, discount1, discount5, stock,
+                  our_purchase, discount_we_got_percent, selling_price_1, selling_price_5,
+                  discount_percent_1, discount_percent_5, id))
+
+        conn.commit()
+        conn.close()
+        return {"message": "Product updated successfully!"}
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 @app.route("/api/add-category", methods=["POST"])
 def add_category():
     try:
-        name = (request.form.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "Category name required"}), 400
-        conn = get_conn()
+        name = request.form.get("name")
+        conn = sqlite3.connect(DB)
         c = conn.cursor()
         c.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
         conn.commit()
         conn.close()
-        logging.info("Added category: %s", name)
-        return jsonify({"message": "Category added"})
+        return {"message": "Category added successfully!"}
     except Exception as e:
-        logging.exception("add-category error")
-        return jsonify({"error": str(e)}), 500
+        return {"error": str(e)}, 500
 
-@app.get("/api/products")
-def get_products():
-    logging.info("GET /api/products")
-    conn = get_conn()
+@app.get("/api/categories")
+def get_categories():
+    conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT * FROM products ORDER BY id DESC")
+    c.execute("SELECT * FROM categories")
     rows = c.fetchall()
     conn.close()
-    return jsonify([row_to_product(r) for r in rows])
+    return jsonify([{"id": r[0], "name": r[1]} for r in rows])
 
-@app.get("/api/product/<int:pid>")
-def get_product(pid):
-    logging.info("GET /api/product/%d", pid)
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE id = ?", (pid,))
-    r = c.fetchone()
-    conn.close()
-    if not r:
-        return jsonify({"error": "Product not found"}), 404
-    return jsonify(row_to_product(r))
-
-@app.get("/api/category/<string:cat>")
+@app.get("/api/category/<cat>")
 def products_by_category(cat):
-    logging.info("GET /api/category/%s", cat)
-    conn = get_conn()
+    conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("SELECT * FROM products WHERE category = ?", (cat,))
     rows = c.fetchall()
     conn.close()
     return jsonify([row_to_product(r) for r in rows])
 
-def save_image(fileobj):
-    filename = secure_filename(fileobj.filename)
-    if not allowed_file(filename):
-        return None
-    dest = os.path.join(UPLOAD_FOLDER, filename)
-    fileobj.save(dest)
-    return filename
-
-@app.route("/api/add-product", methods=["POST"])
-def add_product():
-    try:
-        name = (request.form.get("name") or "").strip()
-        category = (request.form.get("category") or "").strip()
-        details = (request.form.get("details") or "").strip()
-        mrp = float(request.form.get("mrp") or 0)
-        purchase = float(request.form.get("purchase") or 0)
-        discount1 = float(request.form.get("discount1") or 0)
-        discount5 = float(request.form.get("discount5") or 0)
-        stock = int(request.form.get("stock") or 0)
-
-        image_file = request.files.get("image")
-        image_name = ""
-        if image_file and image_file.filename:
-            saved = save_image(image_file)
-            if not saved:
-                return jsonify({"error": "Invalid image file type"}), 400
-            image_name = saved
-
-        conn = get_conn()
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO products
-            (name, category, details, mrp, purchase_price, discount_1, discount_5, stock, image_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name, category, details, mrp, purchase, discount1, discount5, stock, image_name))
-        conn.commit()
-        conn.close()
-        logging.info("Added product: %s (%s)", name, category)
-        return jsonify({"message": "Product added"})
-    except Exception as e:
-        logging.exception("add-product error")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/api/update-product/<int:pid>", methods=["POST"])
-def update_product(pid):
-    try:
-        name = (request.form.get("name") or "").strip()
-        category = (request.form.get("category") or "").strip()
-        details = (request.form.get("details") or "").strip()
-        mrp = float(request.form.get("mrp") or 0)
-        purchase = float(request.form.get("purchase") or 0)
-        discount1 = float(request.form.get("discount1") or 0)
-        discount5 = float(request.form.get("discount5") or 0)
-        stock = int(request.form.get("stock") or 0)
-
-        image_file = request.files.get("image")
-        image_name = None
-        if image_file and image_file.filename:
-            saved = save_image(image_file)
-            if not saved:
-                return jsonify({"error": "Invalid image file type"}), 400
-            image_name = saved
-
-        conn = get_conn()
-        c = conn.cursor()
-        if image_name:
-            c.execute("""
-                UPDATE products
-                SET name=?, category=?, details=?, mrp=?, purchase_price=?, discount_1=?, discount_5=?, stock=?, image_url=?
-                WHERE id=?
-            """, (name, category, details, mrp, purchase, discount1, discount5, stock, image_name, pid))
-        else:
-            c.execute("""
-                UPDATE products
-                SET name=?, category=?, details=?, mrp=?, purchase_price=?, discount_1=?, discount_5=?, stock=?
-                WHERE id=?
-            """, (name, category, details, mrp, purchase, discount1, discount5, stock, pid))
-        conn.commit()
-        conn.close()
-        logging.info("Updated product %d", pid)
-        return jsonify({"message": "Product updated"})
-    except Exception as e:
-        logging.exception("update-product error")
-        return jsonify({"error": str(e)}), 500
-
 @app.get("/export")
-def export_products():
-    logging.info("GET /export")
-    conn = get_conn()
+def export():
+    conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("SELECT * FROM products")
     rows = c.fetchall()
@@ -229,23 +220,13 @@ def export_products():
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["ID", "Name", "Category", "Details", "MRP", "Purchase", "Discount1", "Discount5", "Stock", "Image"])
+    ws.append(["ID","Name","Category","Details","MRP","Purchase","Discount1","Discount5","Stock","Image","OurPurchase","DiscGot%","Sell1","Sell5","Disc1%","Disc5%"])
     for r in rows:
         ws.append(r)
     file_path = "/var/www/beautybucket/backend/products.xlsx"
     wb.save(file_path)
     return send_file(file_path, as_attachment=True)
 
-# Optional: serve images via Flask if needed (Nginx also serves them)
-@app.get("/images/<path:filename>")
-def serve_image(filename):
-    safe = secure_filename(filename)
-    filepath = os.path.join(UPLOAD_FOLDER, safe)
-    if not os.path.exists(filepath):
-        abort(404)
-    return send_from_directory(UPLOAD_FOLDER, safe)
-
 if __name__ == "__main__":
-    # for manual testing only
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5000)
 

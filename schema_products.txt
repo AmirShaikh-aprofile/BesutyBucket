@@ -1,0 +1,12 @@
+CREATE TABLE products(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            category TEXT,
+            details TEXT,
+            mrp REAL,
+            purchase_price REAL,
+            discount_1 REAL,
+            discount_5 REAL,
+            stock INTEGER,
+            image_url TEXT
+        , discount_mrp_percent REAL DEFAULT 0, selling_price_1pc REAL DEFAULT 0, selling_price_5pc REAL DEFAULT 0, discount_1pc_percent REAL DEFAULT 0, discount_5pc_percent REAL DEFAULT 0);
